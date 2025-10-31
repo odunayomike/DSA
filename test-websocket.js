@@ -32,9 +32,19 @@ function connect() {
     const response = JSON.parse(data);
     console.log('Received:', response);
 
+    // Handle ping/pong to keep connection alive
+    if (response.msg === 'ping') {
+      console.log('↔ Ping received, sending pong...');
+      ws.send(JSON.stringify({ msg: 'pong' }));
+      return;
+    }
+
     if (response.msg === 'connected') {
       console.log('\n✓ DDP Connected (Session:', response.session + ')');
       console.log('Authenticating with token...');
+
+      // Reset subscription attempts on new connection
+      subscriptionAttempts = 0;
 
       // Step 2: Login with token
       ws.send(JSON.stringify({
