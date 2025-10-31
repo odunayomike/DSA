@@ -1,0 +1,21 @@
+{
+  "name": "rocketchat-websocket-test",
+  "version": "1.0.0",
+  "description": "Test Rocket.Chat WebSocket connection using DDP protocol",
+  "main": "test-websocket.js",
+  "scripts": {
+    "start": "node test-websocket.js",
+    "test": "node test-websocket.js"
+  },
+  "keywords": [
+    "rocketchat",
+    "websocket",
+    "ddp",
+    "livechat"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.14.2"
+  }
+}
