@@ -1,71 +1,123 @@
 const WebSocket = require('ws');
+const config = require('./config');
 
-const ws = new WebSocket('wss://ws1.keosapp.org/websocket');
-
-const TOKEN = 'UNdZgL-67FRccTExF-zko_oZkvlzZJy5tdHj8v1fnlb';
-const USER_ID = 'CMAP5jftT8ELWEnHt';
-
+let ws = null;
 let subscriptionAttempts = 0;
+let connectionAttempts = 0;
 
-ws.on('open', function() {
-  console.log('Connected to Rocket.Chat');
+function connect() {
+  connectionAttempts++;
 
-  // Step 1: Connect to DDP
-  ws.send(JSON.stringify({
-    msg: 'connect',
-    version: '1',
-    support: ['1']
-  }));
-});
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`Connection attempt ${connectionAttempts}/${config.retryAttempts}`);
+  console.log(`Connecting to: ${config.websocketUrl}`);
+  console.log(`${'='.repeat(60)}\n`);
 
-ws.on('message', function(data) {
-  const response = JSON.parse(data);
-  console.log('Received:', response);
+  ws = new WebSocket(config.websocketUrl);
 
-  if (response.msg === 'connected') {
-    console.log('DDP Connected, logging in...');
+  ws.on('open', function() {
+    console.log('✓ WebSocket connected successfully');
+    connectionAttempts = 0; // Reset on successful connection
 
-    // Step 2: Login with token
+    // Step 1: Connect to DDP
+    console.log('Sending DDP connect message...');
     ws.send(JSON.stringify({
-      msg: 'method',
-      method: 'login',
-      id: '1',
-      params: [{
-        resume: TOKEN
-      }]
+      msg: 'connect',
+      version: '1',
+      support: ['1']
     }));
-  }
+  });
 
-  if (response.msg === 'result' && response.id === '1') {
-    console.log('Logged in successfully');
-    console.log('User ID:', response.result.id);
+  ws.on('message', function(data) {
+    const response = JSON.parse(data);
+    console.log('Received:', response);
 
-    // Try different subscription approaches
-    trySubscriptions();
-  }
+    if (response.msg === 'connected') {
+      console.log('\n✓ DDP Connected (Session:', response.session + ')');
+      console.log('Authenticating with token...');
 
-  // Handle subscription errors
-  if (response.msg === 'nosub') {
-    console.error('\nSubscription failed:', response.id);
-    console.error('Error:', response.error.message);
-    console.error('Reason:', response.error.error);
+      // Step 2: Login with token
+      ws.send(JSON.stringify({
+        msg: 'method',
+        method: 'login',
+        id: '1',
+        params: [{
+          resume: config.token
+        }]
+      }));
+    }
 
-    // Try next subscription method
-    trySubscriptions();
-  }
+    if (response.msg === 'result' && response.id === '1') {
+      if (response.result && response.result.id) {
+        console.log('\n✓ Logged in successfully');
+        console.log('User ID:', response.result.id);
+        console.log('Token type:', response.result.type);
 
-  // Handle subscription success
-  if (response.msg === 'ready') {
-    console.log('\n✓ Subscription successful:', response.subs);
-  }
+        // Try different subscription approaches
+        trySubscriptions();
+      } else {
+        console.error('\n✗ Login failed:', response.error || 'Unknown error');
+      }
+    }
 
-  // Handle updates
-  if (response.msg === 'changed') {
-    console.log('\n--- Update received ---');
-    console.log('Collection:', response.collection);
-    console.log('Data:', response);
-  }
-});
+    // Handle subscription errors
+    if (response.msg === 'nosub') {
+      console.error('\n✗ Subscription failed:', response.id);
+      console.error('Error:', response.error.message);
+      console.error('Reason:', response.error.error);
+
+      // Try next subscription method
+      trySubscriptions();
+    }
+
+    // Handle subscription success
+    if (response.msg === 'ready') {
+      console.log('\n✓ Subscription successful:', response.subs);
+    }
+
+    // Handle updates
+    if (response.msg === 'changed') {
+      console.log('\n--- Update received ---');
+      console.log('Collection:', response.collection);
+      console.log('Data:', response);
+    }
+  });
+
+  ws.on('error', function(error) {
+    console.error('\n✗ WebSocket error:', error.message);
+
+    if (error.code === 'ENOTFOUND') {
+      console.error('\nPossible causes:');
+      console.error('1. The hostname "' + error.hostname + '" cannot be resolved');
+      console.error('2. Check if the server is online');
+      console.error('3. Verify the URL in config.js is correct');
+      console.error('4. Check your internet connection');
+    } else if (error.code === 'ECONNREFUSED') {
+      console.error('\nThe server refused the connection.');
+      console.error('The server may be down or blocking connections.');
+    }
+  });
+
+  ws.on('close', function() {
+    console.log('\n✗ WebSocket connection closed');
+
+    // Retry if we haven't exceeded max attempts
+    if (connectionAttempts < config.retryAttempts) {
+      console.log(`Retrying in ${config.retryDelay / 1000} seconds...`);
+      setTimeout(connect, config.retryDelay);
+    } else {
+      console.log('\n' + '='.repeat(60));
+      console.log('Maximum connection attempts reached. Giving up.');
+      console.log('='.repeat(60));
+      console.log('\nTroubleshooting steps:');
+      console.log('1. Verify the WebSocket URL in config.js');
+      console.log('2. Try connecting to the Rocket.Chat web interface');
+      console.log('3. Check if the server is accessible from your network');
+      console.log('4. Try a public Rocket.Chat demo server:');
+      console.log('   websocketUrl: "wss://demo.rocket.chat/websocket"');
+    }
+  });
+}
 
 function trySubscriptions() {
   subscriptionAttempts++;
@@ -91,7 +143,7 @@ function trySubscriptions() {
         msg: 'sub',
         id: 'sub-2',
         name: 'stream-notify-user',
-        params: [`${USER_ID}/notification`, false]
+        params: [`${config.userId}/notification`, false]
       }));
       break;
 
@@ -102,7 +154,7 @@ function trySubscriptions() {
         msg: 'sub',
         id: 'sub-3',
         name: 'stream-notify-user',
-        params: [`${USER_ID}/rooms-changed`, false]
+        params: [`${config.userId}/rooms-changed`, false]
       }));
       break;
 
@@ -138,10 +190,5 @@ function trySubscriptions() {
   }
 }
 
-ws.on('error', function(error) {
-  console.error('WebSocket error:', error);
-});
-
-ws.on('close', function() {
-  console.log('\nWebSocket connection closed');
-});
+// Start the connection
+connect();
