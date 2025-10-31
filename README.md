@@ -28,14 +28,25 @@ cp config.example.js config.js
 
 ### Usage
 
-Run the test script:
+**Option 1: Monitor livechat queue (Recommended)**
+```bash
+npm run monitor
+```
+This will:
+1. Fetch existing queued messages via REST API
+2. Connect WebSocket for real-time queue updates
+3. Display both historical and new livechat inquiries
+
+**Option 2: Test all methods**
 ```bash
 npm start
 ```
+This runs the comprehensive test that tries 18 different methods to access the queue.
 
-Or directly:
+**Direct execution:**
 ```bash
-node test-websocket.js
+node livechat-monitor.js  # Production monitoring
+node test-websocket.js     # Testing all methods
 ```
 
 ### How it Works

@@ -5,7 +5,8 @@
   "main": "test-websocket.js",
   "scripts": {
     "start": "node test-websocket.js",
-    "test": "node test-websocket.js"
+    "test": "node test-websocket.js",
+    "monitor": "node livechat-monitor.js"
   },
   "keywords": [
     "rocketchat",
