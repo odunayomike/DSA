@@ -3,7 +3,9 @@ Data Structure and Algorithm Examples
 
 ## Rocket.Chat WebSocket Test
 
-A simple Node.js script to test Rocket.Chat WebSocket connections using the DDP (Distributed Data Protocol) protocol.
+A Node.js script to test Rocket.Chat WebSocket connections and access livechat queue messages using the DDP (Distributed Data Protocol) protocol.
+
+**Primary Goal:** Access and monitor livechat queue messages in real-time.
 
 ### Setup
 
