@@ -32,9 +32,19 @@ function connect() {
     const response = JSON.parse(data);
     console.log('Received:', response);
 
+    // Handle ping/pong to keep connection alive
+    if (response.msg === 'ping') {
+      console.log('↔ Ping received, sending pong...');
+      ws.send(JSON.stringify({ msg: 'pong' }));
+      return;
+    }
+
     if (response.msg === 'connected') {
       console.log('\n✓ DDP Connected (Session:', response.session + ')');
       console.log('Authenticating with token...');
+
+      // Reset subscription attempts on new connection
+      subscriptionAttempts = 0;
 
       // Step 2: Login with token
       ws.send(JSON.stringify({
@@ -58,6 +68,20 @@ function connect() {
       } else {
         console.error('\n✗ Login failed:', response.error || 'Unknown error');
       }
+    }
+
+    // Handle method call results
+    if (response.msg === 'result' && response.id !== '1') {
+      console.log('\n--- Method Result ---');
+      console.log('Method ID:', response.id);
+      if (response.error) {
+        console.error('✗ Error:', response.error);
+      } else {
+        console.log('✓ Result:', JSON.stringify(response.result, null, 2));
+      }
+
+      // Try next method after getting result
+      setTimeout(() => trySubscriptions(), 500);
     }
 
     // Handle subscription errors
@@ -122,12 +146,23 @@ function connect() {
 function trySubscriptions() {
   subscriptionAttempts++;
 
-  console.log(`\nTrying subscription method ${subscriptionAttempts}...`);
+  console.log(`\nTrying method ${subscriptionAttempts}...`);
 
   switch(subscriptionAttempts) {
     case 1:
-      // Original: Try livechat queue
-      console.log('Attempting: stream-livechat-room (queue)');
+      // Check user roles first
+      console.log('Calling method: getUserRoles (to check permissions)');
+      ws.send(JSON.stringify({
+        msg: 'method',
+        method: 'getUserRoles',
+        id: 'method-1',
+        params: []
+      }));
+      break;
+
+    case 2:
+      // Try livechat queue subscription
+      console.log('Subscription: stream-livechat-room (queue)');
       ws.send(JSON.stringify({
         msg: 'sub',
         id: 'sub-1',
@@ -136,57 +171,107 @@ function trySubscriptions() {
       }));
       break;
 
-    case 2:
-      // Try user's notifications
-      console.log('Attempting: stream-notify-user (notifications)');
+    case 3:
+      // Try alternative livechat queue
+      console.log('Subscription: livechat:queue');
       ws.send(JSON.stringify({
         msg: 'sub',
         id: 'sub-2',
-        name: 'stream-notify-user',
-        params: [`${config.userId}/notification`, false]
-      }));
-      break;
-
-    case 3:
-      // Try user's rooms
-      console.log('Attempting: stream-notify-user (rooms-changed)');
-      ws.send(JSON.stringify({
-        msg: 'sub',
-        id: 'sub-3',
-        name: 'stream-notify-user',
-        params: [`${config.userId}/rooms-changed`, false]
+        name: 'livechat:queue',
+        params: []
       }));
       break;
 
     case 4:
-      // Try room messages subscription
-      console.log('Attempting: stream-room-messages');
+      // Try livechat inquiry queue
+      console.log('Subscription: livechat:inquiry');
       ws.send(JSON.stringify({
         msg: 'sub',
-        id: 'sub-4',
-        name: 'stream-room-messages',
-        params: ['__my_messages__', false]
-      }));
-      break;
-
-    case 5:
-      // Try livechat inquiry
-      console.log('Attempting: livechat:inquiry');
-      ws.send(JSON.stringify({
-        msg: 'sub',
-        id: 'sub-5',
+        id: 'sub-3',
         name: 'livechat:inquiry',
         params: []
       }));
       break;
 
+    case 5:
+      // Try getting queue via method call
+      console.log('Calling method: livechat:getQueuedMessages');
+      ws.send(JSON.stringify({
+        msg: 'method',
+        method: 'livechat:getQueuedMessages',
+        id: 'method-2',
+        params: []
+      }));
+      break;
+
+    case 6:
+      // Try another method to get queue
+      console.log('Calling method: livechat:getQueue');
+      ws.send(JSON.stringify({
+        msg: 'method',
+        method: 'livechat:getQueue',
+        id: 'method-3',
+        params: []
+      }));
+      break;
+
+    case 7:
+      // Try stream-notify-logged
+      console.log('Subscription: stream-notify-logged (livechat-inquiry-queue-observer)');
+      ws.send(JSON.stringify({
+        msg: 'sub',
+        id: 'sub-4',
+        name: 'stream-notify-logged',
+        params: ['livechat-inquiry-queue-observer', false]
+      }));
+      break;
+
+    case 8:
+      // Try livechat rooms
+      console.log('Calling method: livechat:getRooms');
+      ws.send(JSON.stringify({
+        msg: 'method',
+        method: 'livechat:getRooms',
+        id: 'method-4',
+        params: [{ agents: [config.userId] }]
+      }));
+      break;
+
+    case 9:
+      // Try getting inquiries
+      console.log('Calling method: livechat:getInquiries');
+      ws.send(JSON.stringify({
+        msg: 'method',
+        method: 'livechat:getInquiries',
+        id: 'method-5',
+        params: []
+      }));
+      break;
+
+    case 10:
+      // Subscribe to user's livechat notifications
+      console.log('Subscription: stream-notify-user (livechat)');
+      ws.send(JSON.stringify({
+        msg: 'sub',
+        id: 'sub-5',
+        name: 'stream-notify-user',
+        params: [`${config.userId}/livechat`, false]
+      }));
+      break;
+
     default:
-      console.log('\nAll subscription methods tried.');
-      console.log('\nTo find available subscriptions, you may need to:');
-      console.log('1. Check your user permissions/roles in Rocket.Chat');
-      console.log('2. Review Rocket.Chat API documentation for your version');
-      console.log('3. Check server logs for available subscription names');
-      console.log('\nConnection will remain open to receive any updates...');
+      console.log('\n' + '='.repeat(60));
+      console.log('All livechat queue access methods tried.');
+      console.log('='.repeat(60));
+      console.log('\nPossible issues:');
+      console.log('1. User lacks livechat agent/manager role');
+      console.log('2. Livechat feature not enabled on server');
+      console.log('3. Different subscription names in your Rocket.Chat version');
+      console.log('\nNext steps:');
+      console.log('- Check user roles in Rocket.Chat admin panel');
+      console.log('- Ensure user has "livechat-agent" or "livechat-manager" role');
+      console.log('- Check Rocket.Chat server version and docs');
+      console.log('\nConnection remains open for any incoming messages...');
   }
 }
 
